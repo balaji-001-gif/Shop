@@ -106,11 +106,14 @@ def place_order(guest_details=None):
 	cart_settings = get_shopping_cart_settings()
 
 	if frappe.session.user == "Guest" and guest_details:
-		# Create a proper Customer for the guest with their actual name
 		guest_name = guest_details.get("fullname") or "Guest Customer"
 		guest_email = guest_details.get("email") or ""
 
-		# Check if customer with this email already exists
+		# Step 1: Get the EXISTING cart quotation (under "Guest Customer")
+		guest_party = get_party()
+		quotation = _get_cart_quotation(guest_party)
+
+		# Step 2: Find or create a proper Customer with actual name
 		existing_customer = None
 		if guest_email:
 			existing_contact = frappe.db.get_value("Contact Email",
@@ -124,7 +127,6 @@ def place_order(guest_details=None):
 		if existing_customer:
 			party = frappe.get_doc("Customer", existing_customer, ignore_permissions=True)
 		else:
-			# Create new Customer with proper name
 			party = frappe.new_doc("Customer")
 			party.update({
 				"customer_name": guest_name,
@@ -135,7 +137,7 @@ def place_order(guest_details=None):
 			party.flags.ignore_mandatory = True
 			party.insert(ignore_permissions=True)
 
-			# Create Contact linked to the Customer
+			# Create Contact linked to Customer
 			if guest_email:
 				contact = frappe.new_doc("Contact")
 				contact.update({
@@ -151,13 +153,12 @@ def place_order(guest_details=None):
 				contact.flags.ignore_mandatory = True
 				contact.insert(ignore_permissions=True)
 
-		quotation = _get_cart_quotation(party)
-		quotation.contact_email = guest_email
+		# Step 3: Update the existing quotation to point to the real customer
+		quotation.party_name = party.name
 		quotation.customer_name = guest_name
+		quotation.contact_email = guest_email
 		quotation.shipping_address = guest_details.get("address")
 		quotation.customer_address = guest_details.get("address")
-		# In a real ERPNext setup, we might want to create a proper Guest Address record here
-		# For now, we'll store it as text or use a generic one if needed.
 	else:
 		party = get_party()
 		quotation = _get_cart_quotation(party)
