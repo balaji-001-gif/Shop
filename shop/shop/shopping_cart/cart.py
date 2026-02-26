@@ -843,7 +843,11 @@ def get_party(user=None):
 
 def _get_guest_customer(cart_settings):
 	guest_customer_name = _("Guest Customer")
-	if not frappe.db.exists("Customer", guest_customer_name):
+	# Look up by customer_name field (not primary key) to handle CUST-#### naming series
+	existing = frappe.db.get_value("Customer", {"customer_name": guest_customer_name}, "name")
+	if existing:
+		return frappe.get_doc("Customer", existing, ignore_permissions=True)
+	else:
 		customer = frappe.new_doc("Customer")
 		customer.update(
 			{
@@ -856,8 +860,6 @@ def _get_guest_customer(cart_settings):
 		customer.flags.ignore_mandatory = True
 		customer.insert(ignore_permissions=True)
 		return customer
-	else:
-		return frappe.get_doc("Customer", guest_customer_name, ignore_permissions=True)
 
 
 def get_debtors_account(cart_settings):
