@@ -801,8 +801,27 @@ def get_party(user=None):
 		if not cart_settings.enabled:
 			frappe.local.flags.redirect_location = "/contact"
 			raise frappe.Redirect
-		customer = frappe.new_doc("Customer")
+
 		fullname = get_fullname(user)
+		# Fallback: if fullname is empty or just the email, try first_name from User doc
+		if not fullname or fullname == user:
+			user_doc = frappe.db.get_value("User", user, ["first_name", "full_name"], as_dict=True)
+			if user_doc:
+				fullname = user_doc.get("full_name") or user_doc.get("first_name") or user
+
+		# Check if a Customer already exists with this name (avoid duplicates from mobile_signup)
+		existing_customer = frappe.db.get_value("Customer", {"customer_name": fullname}, "name")
+		if existing_customer:
+			customer = frappe.get_doc("Customer", existing_customer, ignore_permissions=True)
+			# Ensure portal_users entry exists
+			if not frappe.db.exists("Portal User", {"parent": customer.name, "user": user}):
+				customer.append("portal_users", {"user": user})
+				customer.flags.ignore_permissions = True
+				customer.flags.ignore_mandatory = True
+				customer.save()
+			return customer
+
+		customer = frappe.new_doc("Customer")
 		customer.update(
 			{
 				"customer_name": fullname,
