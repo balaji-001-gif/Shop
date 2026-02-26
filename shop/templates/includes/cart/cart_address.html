@@ -5,13 +5,14 @@
 {% endif %}
 
 <div class="mb-3 frappe-card p-5" data-section="shipping-address">
-	<div class="d-flex">
-		<div class="col-6 address-header">
-			<h6>{{ _("Shipping Address") }}</h6>
+	<div class="d-flex align-items-center justify-content-between">
+		<div class="address-header">
+			<h6 class="mb-0">{{ _("Shipping Address") }}</h6>
 		</div>
-		<div class="col-6" style="padding: 0;">
-			<a class="ml-4 btn-new-address" role="button">{{ _("Add a new address") }}</a>
-		</div>
+		<button class="btn btn-new-address"
+			style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; font-weight: 600; padding: 8px 20px; border: none; border-radius: 8px; font-size: 0.9rem;">
+			➕ {{ _("Add New Address") }}
+		</button>
 	</div>
 
 	<hr>
@@ -37,13 +38,14 @@
 
 
 <div class="mb-3 frappe-card p-5" data-section="billing-address">
-	<div class="d-flex">
-		<div class="col-6 address-header">
-			<h6>{{ _("Billing Address") }}</h6>
+	<div class="d-flex align-items-center justify-content-between">
+		<div class="address-header">
+			<h6 class="mb-0">{{ _("Billing Address") }}</h6>
 		</div>
-		<div class="col-6" style="padding: 0;">
-			<a class="ml-4 btn-new-address" role="button">{{ _("Add a new address") }}</a>
-		</div>
+		<button class="btn btn-new-address"
+			style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; font-weight: 600; padding: 8px 20px; border: none; border-radius: 8px; font-size: 0.9rem;">
+			➕ {{ _("Add New Address") }}
+		</button>
 	</div>
 
 	<hr>
@@ -78,6 +80,11 @@
 			const d = new frappe.ui.Dialog({
 				title: '{{_("New Address") }}',
 				fields: [
+					{
+						fieldname: 'location_section',
+						fieldtype: 'HTML',
+						options: '<button type="button" id="btn-use-location" class="btn w-100 mb-3" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 600; padding: 12px; border: none; border-radius: 10px; font-size: 1rem;">📍 Use My Location</button><div id="location-status" class="text-center mb-2" style="display:none;"></div>'
+					},
 					{
 						label: '{{ _("Address Title") }}',
 						fieldname: 'address_title',
@@ -157,11 +164,83 @@
 								}
 							});
 						});
-
 				}
 			})
 
 			d.show();
+
+			// Attach GPS location handler after dialog renders
+			setTimeout(() => {
+				$('#btn-use-location').on('click', function () {
+					var btn = $(this);
+					var statusDiv = $('#location-status');
+
+					if (!navigator.geolocation) {
+						statusDiv.show().html('<span class="text-danger">Geolocation not supported by your browser.</span>');
+						return;
+					}
+
+					btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-2"></span> Detecting location...');
+					statusDiv.show().html('<span class="text-muted">Requesting GPS access...</span>');
+
+					navigator.geolocation.getCurrentPosition(
+						function (position) {
+							var lat = position.coords.latitude;
+							var lng = position.coords.longitude;
+							statusDiv.html('<span class="text-muted">Converting to address...</span>');
+
+							// Nominatim (OpenStreetMap) free reverse geocoding
+							fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&addressdetails=1&accept-language=en')
+								.then(res => res.json())
+								.then(data => {
+									if (data && data.address) {
+										var addr = data.address;
+
+										// Address Line 1
+										var line1Parts = [];
+										if (addr.house_number) line1Parts.push(addr.house_number);
+										if (addr.road) line1Parts.push(addr.road);
+										if (addr.neighbourhood) line1Parts.push(addr.neighbourhood);
+										if (addr.suburb) line1Parts.push(addr.suburb);
+										var addressLine1 = line1Parts.join(', ') || data.display_name.split(',').slice(0, 2).join(',');
+
+										// Address Line 2
+										var line2Parts = [];
+										if (addr.village) line2Parts.push(addr.village);
+										if (addr.town) line2Parts.push(addr.town);
+										if (addr.county) line2Parts.push(addr.county);
+										var addressLine2 = line2Parts.join(', ');
+
+										// Set dialog values
+										d.set_value('address_line1', addressLine1);
+										d.set_value('address_line2', addressLine2);
+										d.set_value('city', addr.city || addr.town || addr.village || addr.county || '');
+										d.set_value('state', addr.state || '');
+										d.set_value('pincode', addr.postcode || '');
+										if (addr.country) d.set_value('country', addr.country);
+
+										statusDiv.html('<span class="text-success">✅ Address detected! Review and adjust if needed.</span>');
+									} else {
+										statusDiv.html('<span class="text-danger">Could not detect address. Please enter manually.</span>');
+									}
+									btn.html('📍 Use My Location').prop('disabled', false);
+								})
+								.catch(err => {
+									statusDiv.html('<span class="text-danger">Error detecting address.</span>');
+									btn.html('📍 Use My Location').prop('disabled', false);
+								});
+						},
+						function (error) {
+							var msg = 'Location access denied.';
+							if (error.code === 2) msg = 'Location unavailable.';
+							if (error.code === 3) msg = 'Location request timed out.';
+							statusDiv.html('<span class="text-danger">' + msg + ' Please enter manually.</span>');
+							btn.html('📍 Use My Location').prop('disabled', false);
+						},
+						{ enableHighAccuracy: true, timeout: 10000 }
+					);
+				});
+			}, 300);
 		});
 
 		function setup_state() {
