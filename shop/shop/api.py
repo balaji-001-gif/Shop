@@ -144,6 +144,21 @@ def mobile_signup(mobile_no, full_name, password):
 			customer.flags.ignore_mandatory = True
 			customer.insert(ignore_permissions=True)
 
+			# Create Contact linked to Customer (required for get_party to find this customer)
+			contact = frappe.new_doc("Contact")
+			contact.update({
+				"first_name": full_name,
+				"email_ids": [{"email_id": email, "is_primary": 1}],
+			})
+			if mobile_no:
+				contact.append("phone_nos", {
+					"phone": mobile_no,
+					"is_primary_phone": 1,
+				})
+			contact.append("links", dict(link_doctype="Customer", link_name=customer.name))
+			contact.flags.ignore_mandatory = True
+			contact.insert(ignore_permissions=True)
+
 		# Finally login the user
 		from frappe.auth import LoginManager
 		login_manager = LoginManager()

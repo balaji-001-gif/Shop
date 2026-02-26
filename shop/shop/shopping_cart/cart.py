@@ -797,67 +797,69 @@ def get_party(user=None):
 
 		return doc
 
-	elif not frappe.db.exists("Portal User", {"user": user}):
-		if not cart_settings.enabled:
-			frappe.local.flags.redirect_location = "/contact"
-			raise frappe.Redirect
+	# Step 2: Check if Customer exists via Portal User table
+	portal_customer = frappe.db.get_value("Portal User", {"user": user}, "parent")
+	if portal_customer and frappe.db.exists("Customer", portal_customer):
+		customer = frappe.get_doc("Customer", portal_customer, ignore_permissions=True)
+		return customer
 
-		fullname = get_fullname(user)
-		# Fallback: if fullname is empty or just the email, try first_name from User doc
-		if not fullname or fullname == user:
-			user_doc = frappe.db.get_value("User", user, ["first_name", "full_name"], as_dict=True)
-			if user_doc:
-				fullname = user_doc.get("full_name") or user_doc.get("first_name") or user
+	# Step 3: No Contact or Portal User found — create new Customer
+	if not cart_settings.enabled:
+		frappe.local.flags.redirect_location = "/contact"
+		raise frappe.Redirect
 
-		# Check if a Customer already exists with this name (avoid duplicates from mobile_signup)
-		existing_customer = frappe.db.get_value("Customer", {"customer_name": fullname}, "name")
-		if existing_customer:
-			customer = frappe.get_doc("Customer", existing_customer, ignore_permissions=True)
-			# Ensure portal_users entry exists
-			if not frappe.db.exists("Portal User", {"parent": customer.name, "user": user}):
-				customer.append("portal_users", {"user": user})
-				customer.flags.ignore_permissions = True
-				customer.flags.ignore_mandatory = True
-				customer.save()
-			return customer
+	fullname = get_fullname(user)
+	# Fallback: if fullname is empty or just the email, try first_name from User doc
+	if not fullname or fullname == user:
+		user_doc = frappe.db.get_value("User", user, ["first_name", "full_name"], as_dict=True)
+		if user_doc:
+			fullname = user_doc.get("full_name") or user_doc.get("first_name") or user
 
-		customer = frappe.new_doc("Customer")
+	# Check if a Customer already exists with this name (avoid duplicates)
+	existing_customer = frappe.db.get_value("Customer", {"customer_name": fullname}, "name")
+	if existing_customer:
+		customer = frappe.get_doc("Customer", existing_customer, ignore_permissions=True)
+		# Ensure portal_users entry exists
+		if not frappe.db.exists("Portal User", {"parent": customer.name, "user": user}):
+			customer.append("portal_users", {"user": user})
+			customer.flags.ignore_permissions = True
+			customer.flags.ignore_mandatory = True
+			customer.save()
+		return customer
+
+	customer = frappe.new_doc("Customer")
+	customer.update(
+		{
+			"customer_name": fullname,
+			"customer_type": "Individual",
+			"customer_group": get_shopping_cart_settings().default_customer_group,
+			"territory": get_root_of("Territory"),
+		}
+	)
+
+	customer.append("portal_users", {"user": user})
+
+	if debtors_account:
 		customer.update(
 			{
-				"customer_name": fullname,
-				"customer_type": "Individual",
-				"customer_group": get_shopping_cart_settings().default_customer_group,
-				"territory": get_root_of("Territory"),
+				"accounts": [
+					{"company": cart_settings.company, "account": debtors_account}
+				]
 			}
 		)
 
-		customer.append("portal_users", {"user": user})
+	customer.flags.ignore_mandatory = True
+	customer.insert(ignore_permissions=True)
 
-		if debtors_account:
-			customer.update(
-				{
-					"accounts": [
-						{"company": cart_settings.company, "account": debtors_account}
-					]
-				}
-			)
+	contact = frappe.new_doc("Contact")
+	contact.update(
+		{"first_name": fullname, "email_ids": [{"email_id": user, "is_primary": 1}]}
+	)
+	contact.append("links", dict(link_doctype="Customer", link_name=customer.name))
+	contact.flags.ignore_mandatory = True
+	contact.insert(ignore_permissions=True)
 
-		customer.flags.ignore_mandatory = True
-		customer.insert(ignore_permissions=True)
-
-		contact = frappe.new_doc("Contact")
-		contact.update(
-			{"first_name": fullname, "email_ids": [{"email_id": user, "is_primary": 1}]}
-		)
-		contact.append("links", dict(link_doctype="Customer", link_name=customer.name))
-		contact.flags.ignore_mandatory = True
-		contact.insert(ignore_permissions=True)
-
-		return customer
-	else:
-		customer_name = frappe.db.get_value("Portal User", {"user": user}, "parent")
-		if customer_name and frappe.db.exists("Customer", customer_name):
-			return frappe.get_doc("Customer", customer_name, ignore_permissions=True)
+	return customer
 
 
 def _get_guest_customer(cart_settings):
