@@ -104,17 +104,63 @@ def place_order(guest_details=None):
 		guest_details = frappe.parse_json(guest_details)
 
 	cart_settings = get_shopping_cart_settings()
-	party = get_party()
-	quotation = _get_cart_quotation(party)
-	
+
 	if frappe.session.user == "Guest" and guest_details:
-		# Update quotation with guest details
-		quotation.contact_email = guest_details.get("email")
-		quotation.customer_name = guest_details.get("fullname")
+		# Create a proper Customer for the guest with their actual name
+		guest_name = guest_details.get("fullname") or "Guest Customer"
+		guest_email = guest_details.get("email") or ""
+
+		# Check if customer with this email already exists
+		existing_customer = None
+		if guest_email:
+			existing_contact = frappe.db.get_value("Contact Email",
+				{"email_id": guest_email}, "parent")
+			if existing_contact:
+				link = frappe.db.get_value("Dynamic Link",
+					{"parent": existing_contact, "link_doctype": "Customer"}, "link_name")
+				if link:
+					existing_customer = link
+
+		if existing_customer:
+			party = frappe.get_doc("Customer", existing_customer, ignore_permissions=True)
+		else:
+			# Create new Customer with proper name
+			party = frappe.new_doc("Customer")
+			party.update({
+				"customer_name": guest_name,
+				"customer_type": "Individual",
+				"customer_group": cart_settings.default_customer_group,
+				"territory": get_root_of("Territory"),
+			})
+			party.flags.ignore_mandatory = True
+			party.insert(ignore_permissions=True)
+
+			# Create Contact linked to the Customer
+			if guest_email:
+				contact = frappe.new_doc("Contact")
+				contact.update({
+					"first_name": guest_name,
+					"email_ids": [{"email_id": guest_email, "is_primary": 1}],
+				})
+				if guest_details.get("phone"):
+					contact.append("phone_nos", {
+						"phone": guest_details.get("phone"),
+						"is_primary_phone": 1,
+					})
+				contact.append("links", dict(link_doctype="Customer", link_name=party.name))
+				contact.flags.ignore_mandatory = True
+				contact.insert(ignore_permissions=True)
+
+		quotation = _get_cart_quotation(party)
+		quotation.contact_email = guest_email
+		quotation.customer_name = guest_name
 		quotation.shipping_address = guest_details.get("address")
 		quotation.customer_address = guest_details.get("address")
 		# In a real ERPNext setup, we might want to create a proper Guest Address record here
 		# For now, we'll store it as text or use a generic one if needed.
+	else:
+		party = get_party()
+		quotation = _get_cart_quotation(party)
 	
 	quotation.company = cart_settings.company
 
