@@ -33,8 +33,12 @@
                         </div>
                         {% else %}
 
-                        {# QR Code #}
-                        <div id="qrcode" class="mb-3 d-flex justify-content-center"></div>
+                        {# QR Code with white border for scanning #}
+                        <div class="mb-3 d-flex justify-content-center">
+                            <div id="qrcode"
+                                style="padding: 16px; background: #fff; border: 3px solid #e0e0e0; border-radius: 12px; display: inline-block;">
+                            </div>
+                        </div>
 
                         {# Desktop: Scan QR message #}
                         <div class="mb-3 d-none d-md-block">
@@ -113,171 +117,204 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var currentOrderId = null;
+    var currentOrderId = null;
 
-document.addEventListener('DOMContentLoaded', function () {
-    var urlParams = new URLSearchParams(window.location.search);
-    var orderId = urlParams.get('order');
+    document.addEventListener('DOMContentLoaded', function () {
+        var urlParams = new URLSearchParams(window.location.search);
+        var orderId = urlParams.get('order');
 
-    if (!orderId) {
-        document.getElementById("upi-loading").style.display = "none";
-        document.getElementById("upi-error").style.display = "block";
-        document.getElementById("upi-error").textContent = "Order ID is missing from URL.";
-        return;
-    }
-
-    currentOrderId = orderId;
-
-    frappe.call({
-        method: "shop.shop.shopping_cart.cart.get_upi_payment_details",
-        args: { order_id: orderId },
-        async: true,
-        callback: function (r) {
-            document.getElementById("upi-loading").style.display = "none";
-
-            if (r.message && r.message.error) {
-                document.getElementById("upi-error").style.display = "block";
-                document.getElementById("upi-error").textContent = r.message.error;
-                return;
-            }
-
-            if (r.message) {
-                var data = r.message;
-
-                document.getElementById("upi-order-name").textContent = data.order_name;
-                document.getElementById("upi-order-amount").textContent = data.formatted_amount;
-                document.getElementById("upi-order-details").style.display = "block";
-
-                // Set UPI deep link — payee only
-                var deepLinkBtn = document.getElementById("btn-upi-deep-link");
-                if (deepLinkBtn && data.upi_id) {
-                    var upiUrl = "upi://pay?pa=" + encodeURIComponent(data.upi_id)
-                        + "&pn=" + encodeURIComponent(data.payee_name);
-                    deepLinkBtn.href = upiUrl;
-                }
-            }
-        },
-        error: function () {
+        if (!orderId) {
             document.getElementById("upi-loading").style.display = "none";
             document.getElementById("upi-error").style.display = "block";
-            document.getElementById("upi-error").textContent = "Failed to load order details. Please refresh.";
+            document.getElementById("upi-error").textContent = "Order ID is missing from URL.";
+            return;
         }
+
+        currentOrderId = orderId;
+
+        frappe.call({
+            method: "shop.shop.shopping_cart.cart.get_upi_payment_details",
+            args: { order_id: orderId },
+            async: true,
+            callback: function (r) {
+                document.getElementById("upi-loading").style.display = "none";
+
+                if (r.message && r.message.error) {
+                    document.getElementById("upi-error").style.display = "block";
+                    document.getElementById("upi-error").textContent = r.message.error;
+                    return;
+                }
+
+                if (r.message) {
+                    var data = r.message;
+
+                    document.getElementById("upi-order-name").textContent = data.order_name;
+                    document.getElementById("upi-order-amount").textContent = data.formatted_amount;
+                    document.getElementById("upi-order-details").style.display = "block";
+
+                    // Set UPI deep link — payee only
+                    var deepLinkBtn = document.getElementById("btn-upi-deep-link");
+                    if (deepLinkBtn && data.upi_id) {
+                        var upiUrl = "upi://pay?pa=" + encodeURIComponent(data.upi_id)
+                            + "&pn=" + encodeURIComponent(data.payee_name);
+                        deepLinkBtn.href = upiUrl;
+                    }
+                }
+            },
+            error: function () {
+                document.getElementById("upi-loading").style.display = "none";
+                document.getElementById("upi-error").style.display = "block";
+                document.getElementById("upi-error").textContent = "Failed to load order details. Please refresh.";
+            }
+        });
+
+        {% if upi_id %}
+        var upiId = "{{ upi_id }}";
+        var payeeName = "{{ payee_name }}";
+        var upiUrl = "upi://pay?pa=" + encodeURIComponent(upiId) + "&pn=" + encodeURIComponent(payeeName);
+
+        new QRCode(document.getElementById("qrcode"), {
+            text: upiUrl,
+            width: 220,
+            height: 220,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+        {% endif %}
     });
 
-    {% if upi_id %}
-    var upiId = "{{ upi_id }}";
-    var payeeName = "{{ payee_name }}";
-    var upiUrl = "upi://pay?pa=" + encodeURIComponent(upiId) + "&pn=" + encodeURIComponent(payeeName);
-
-    new QRCode(document.getElementById("qrcode"), {
-        text: upiUrl,
-        width: 256,
-        height: 256,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    {% endif %}
-});
-
-// Copy UPI ID to clipboard
-function copyUpiId() {
-    var upiId = "{{ upi_id }}";
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(upiId).then(function () {
+    // Copy UPI ID to clipboard
+    function copyUpiId() {
+        var upiId = "{{ upi_id }}";
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(upiId).then(function () {
+                var btn = document.getElementById("btn-copy-upi");
+                btn.innerHTML = "✅ UPI ID Copied!";
+                setTimeout(function () {
+                    btn.innerHTML = "📋 Copy UPI ID";
+                }, 3000);
+            });
+        } else {
+            // Fallback for older browsers
+            var input = document.createElement("input");
+            input.value = upiId;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand("copy");
+            document.body.removeChild(input);
             var btn = document.getElementById("btn-copy-upi");
             btn.innerHTML = "✅ UPI ID Copied!";
             setTimeout(function () {
                 btn.innerHTML = "📋 Copy UPI ID";
             }, 3000);
-        });
-    } else {
-        // Fallback for older browsers
-        var input = document.createElement("input");
-        input.value = upiId;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        document.body.removeChild(input);
-        var btn = document.getElementById("btn-copy-upi");
-        btn.innerHTML = "✅ UPI ID Copied!";
-        setTimeout(function () {
-            btn.innerHTML = "📋 Copy UPI ID";
-        }, 3000);
+        }
     }
-}
 
-// Save QR code image to gallery
-function saveQrCode() {
-    var canvas = document.querySelector("#qrcode canvas");
-    if (canvas) {
-        var link = document.createElement("a");
-        link.download = "upi-qr-code.png";
-        link.href = canvas.toDataURL("image/png");
-        link.click();
-        var btn = document.getElementById("btn-save-qr");
-        btn.innerHTML = "✅ QR Saved!";
-        setTimeout(function () {
-            btn.innerHTML = "💾 Save QR to Gallery";
-        }, 3000);
-    } else {
-        // Fallback: try img element
-        var img = document.querySelector("#qrcode img");
-        if (img) {
+    // Save QR code as clean image with border and payee info
+    function saveQrCode() {
+        var qrCanvas = document.querySelector("#qrcode canvas");
+        var qrImg = document.querySelector("#qrcode img");
+        var source = qrCanvas || null;
+
+        if (!source && qrImg) {
+            // Create canvas from img
+            source = document.createElement("canvas");
+            source.width = qrImg.naturalWidth || 220;
+            source.height = qrImg.naturalHeight || 220;
+            source.getContext("2d").drawImage(qrImg, 0, 0);
+        }
+
+        if (source) {
+            // Create a larger canvas with white border and text
+            var padding = 40;
+            var textHeight = 60;
+            var newCanvas = document.createElement("canvas");
+            newCanvas.width = source.width + (padding * 2);
+            newCanvas.height = source.height + (padding * 2) + textHeight;
+            var ctx = newCanvas.getContext("2d");
+
+            // White background
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+
+            // Border
+            ctx.strokeStyle = "#cccccc";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, newCanvas.width - 2, newCanvas.height - 2);
+
+            // QR code
+            ctx.drawImage(source, padding, padding);
+
+            // Payee info below QR
+            ctx.fillStyle = "#333333";
+            ctx.font = "bold 14px Arial";
+            ctx.textAlign = "center";
+            var centerX = newCanvas.width / 2;
+            ctx.fillText("Pay to: " + "{{ payee_name }}", centerX, source.height + padding + 25);
+            ctx.font = "12px Arial";
+            ctx.fillStyle = "#666666";
+            ctx.fillText("UPI: " + "{{ upi_id }}", centerX, source.height + padding + 45);
+
             var link = document.createElement("a");
-            link.download = "upi-qr-code.png";
-            link.href = img.src;
+            link.download = "upi-payment-qr.png";
+            link.href = newCanvas.toDataURL("image/png");
             link.click();
+
+            var btn = document.getElementById("btn-save-qr");
+            btn.innerHTML = "✅ QR Saved!";
+            setTimeout(function () {
+                btn.innerHTML = "💾 Save QR to Gallery";
+            }, 3000);
         } else {
             frappe.msgprint(__("QR code not available. Please take a screenshot instead."));
         }
     }
-}
 
-// Confirm payment
-function confirmPayment() {
-    if (!currentOrderId) {
-        frappe.msgprint(__("Order data not loaded. Please refresh."));
-        return;
-    }
+    // Confirm payment
+    function confirmPayment() {
+        if (!currentOrderId) {
+            frappe.msgprint(__("Order data not loaded. Please refresh."));
+            return;
+        }
 
-    var btn = document.getElementById("btn-confirm-payment");
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Confirming...';
+        var btn = document.getElementById("btn-confirm-payment");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Confirming...';
 
-    frappe.call({
-        method: "shop.shop.shopping_cart.cart.confirm_upi_payment",
-        args: {
-            order_id: currentOrderId,
-            transaction_id: currentOrderId
-        },
-        callback: function (r) {
-            if (r.message && r.message.success) {
-                btn.style.display = "none";
-                var deepLink = document.getElementById("btn-upi-deep-link");
-                if (deepLink) deepLink.style.display = "none";
-                var copyBtn = document.getElementById("btn-copy-upi");
-                if (copyBtn) copyBtn.style.display = "none";
-                var saveBtn = document.getElementById("btn-save-qr");
-                if (saveBtn) saveBtn.style.display = "none";
+        frappe.call({
+            method: "shop.shop.shopping_cart.cart.confirm_upi_payment",
+            args: {
+                order_id: currentOrderId,
+                transaction_id: currentOrderId
+            },
+            callback: function (r) {
+                if (r.message && r.message.success) {
+                    btn.style.display = "none";
+                    var deepLink = document.getElementById("btn-upi-deep-link");
+                    if (deepLink) deepLink.style.display = "none";
+                    var copyBtn = document.getElementById("btn-copy-upi");
+                    if (copyBtn) copyBtn.style.display = "none";
+                    var saveBtn = document.getElementById("btn-save-qr");
+                    if (saveBtn) saveBtn.style.display = "none";
 
-                document.getElementById("upi-success").style.display = "block";
+                    document.getElementById("upi-success").style.display = "block";
 
-                setTimeout(function () {
-                    window.location.href = "/orders/" + encodeURIComponent(currentOrderId);
-                }, 2000);
-            } else {
+                    setTimeout(function () {
+                        window.location.href = "/orders/" + encodeURIComponent(currentOrderId);
+                    }, 2000);
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '✅ I Have Paid';
+                    frappe.msgprint(r.message.error || __("Failed to confirm. Please try again."));
+                }
+            },
+            error: function () {
                 btn.disabled = false;
                 btn.innerHTML = '✅ I Have Paid';
-                frappe.msgprint(r.message.error || __("Failed to confirm. Please try again."));
+                frappe.msgprint(__("An error occurred. Please try again."));
             }
-        },
-        error: function () {
-            btn.disabled = false;
-            btn.innerHTML = '✅ I Have Paid';
-            frappe.msgprint(__("An error occurred. Please try again."));
-        }
-    });
-}
+        });
+    }
 </script>
 {% endblock %}
