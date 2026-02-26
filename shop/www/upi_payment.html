@@ -33,10 +33,11 @@
                         </div>
                         {% else %}
 
-                        {# Static QR Code #}
-                        <div id="qrcode" class="mb-4 d-flex justify-content-center"></div>
+                        {# QR Code #}
+                        <div id="qrcode" class="mb-3 d-flex justify-content-center"></div>
 
-                        <div class="mb-3">
+                        {# Desktop: Scan QR message #}
+                        <div class="mb-3 d-none d-md-block">
                             <p class="text-muted">Scan the QR code using any UPI app</p>
                             <div class="d-flex justify-content-center gap-3">
                                 <span class="badge bg-light text-dark border">GPay</span>
@@ -46,24 +47,49 @@
                             </div>
                         </div>
 
+                        {# Mobile: Payment options #}
+                        <div class="d-md-none mb-3">
+                            <p class="text-muted mb-3">Choose a payment method:</p>
+
+                            {# Option 1: Pay via UPI App (deep link) #}
+                            <a id="btn-upi-deep-link" href="#" class="btn btn-lg w-100 mb-2"
+                                style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; font-weight: 600; padding: 14px; font-size: 1rem; border-radius: 10px;">
+                                📱 {{ _("Pay via UPI App") }}
+                            </a>
+
+                            {# Option 2: Copy UPI ID #}
+                            <button id="btn-copy-upi" class="btn btn-lg w-100 mb-2"
+                                style="background: linear-gradient(135deg, #f59e0b, #f97316); border: none; color: #fff; font-weight: 600; padding: 14px; font-size: 1rem; border-radius: 10px;"
+                                onclick="copyUpiId()">
+                                📋 {{ _("Copy UPI ID") }}
+                            </button>
+
+                            {# Option 3: Save QR Code #}
+                            <button id="btn-save-qr" class="btn btn-lg w-100 mb-2"
+                                style="background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; font-weight: 600; padding: 14px; font-size: 1rem; border-radius: 10px;"
+                                onclick="saveQrCode()">
+                                💾 {{ _("Save QR to Gallery") }}
+                            </button>
+
+                            <p class="text-muted small mt-2">
+                                <strong>Tip:</strong> If "Pay via UPI App" fails, use "Copy UPI ID" to pay manually,
+                                or save the QR and scan from your gallery.
+                            </p>
+                        </div>
+
                         <hr>
 
                         <div class="text-start mb-3">
-                            <small class="text-muted d-block">UPI ID: <strong>{{ upi_id }}</strong></small>
+                            <small class="text-muted d-block">UPI ID: <strong id="upi-id-display">{{ upi_id
+                                    }}</strong></small>
                             <small class="text-muted d-block">Payee: <strong>{{ payee_name }}</strong></small>
                         </div>
-
-                        {# Pay via UPI App button (mobile only) - opens UPI app with payee only #}
-                        <a id="btn-upi-deep-link" href="#" class="btn btn-lg w-100 mb-3 d-md-none"
-                            style="background-color: #6366f1; border-color: #6366f1; color: #fff; font-weight: 600; padding: 14px; font-size: 1.1rem;">
-                            📱 {{ _("Pay via UPI App") }}
-                        </a>
 
                         {% endif %}
 
                         {# I Have Paid button #}
                         <button id="btn-confirm-payment" class="btn btn-success btn-lg w-100 mt-2"
-                            style="background-color: #28a745; border-color: #28a745; font-weight: 600; padding: 14px; font-size: 1.1rem;"
+                            style="background-color: #28a745; border-color: #28a745; font-weight: 600; padding: 14px; font-size: 1.1rem; border-radius: 10px;"
                             onclick="confirmPayment()">
                             ✅ {{ _("I Have Paid") }}
                         </button>
@@ -102,7 +128,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     currentOrderId = orderId;
 
-    // Fetch order details via AJAX
     frappe.call({
         method: "shop.shop.shopping_cart.cart.get_upi_payment_details",
         args: { order_id: orderId },
@@ -119,12 +144,11 @@ document.addEventListener('DOMContentLoaded', function () {
             if (r.message) {
                 var data = r.message;
 
-                // Populate order details
                 document.getElementById("upi-order-name").textContent = data.order_name;
                 document.getElementById("upi-order-amount").textContent = data.formatted_amount;
                 document.getElementById("upi-order-details").style.display = "block";
 
-                // Set UPI deep link — payee only, customer enters amount in UPI app
+                // Set UPI deep link — payee only
                 var deepLinkBtn = document.getElementById("btn-upi-deep-link");
                 if (deepLinkBtn && data.upi_id) {
                     var upiUrl = "upi://pay?pa=" + encodeURIComponent(data.upi_id)
@@ -141,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     {% if upi_id %}
-    // Static QR Code (UPI ID + Payee only)
     var upiId = "{{ upi_id }}";
     var payeeName = "{{ payee_name }}";
     var upiUrl = "upi://pay?pa=" + encodeURIComponent(upiId) + "&pn=" + encodeURIComponent(payeeName);
@@ -157,6 +180,61 @@ document.addEventListener('DOMContentLoaded', function () {
     {% endif %}
 });
 
+// Copy UPI ID to clipboard
+function copyUpiId() {
+    var upiId = "{{ upi_id }}";
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(upiId).then(function () {
+            var btn = document.getElementById("btn-copy-upi");
+            btn.innerHTML = "✅ UPI ID Copied!";
+            setTimeout(function () {
+                btn.innerHTML = "📋 Copy UPI ID";
+            }, 3000);
+        });
+    } else {
+        // Fallback for older browsers
+        var input = document.createElement("input");
+        input.value = upiId;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+        var btn = document.getElementById("btn-copy-upi");
+        btn.innerHTML = "✅ UPI ID Copied!";
+        setTimeout(function () {
+            btn.innerHTML = "📋 Copy UPI ID";
+        }, 3000);
+    }
+}
+
+// Save QR code image to gallery
+function saveQrCode() {
+    var canvas = document.querySelector("#qrcode canvas");
+    if (canvas) {
+        var link = document.createElement("a");
+        link.download = "upi-qr-code.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        var btn = document.getElementById("btn-save-qr");
+        btn.innerHTML = "✅ QR Saved!";
+        setTimeout(function () {
+            btn.innerHTML = "💾 Save QR to Gallery";
+        }, 3000);
+    } else {
+        // Fallback: try img element
+        var img = document.querySelector("#qrcode img");
+        if (img) {
+            var link = document.createElement("a");
+            link.download = "upi-qr-code.png";
+            link.href = img.src;
+            link.click();
+        } else {
+            frappe.msgprint(__("QR code not available. Please take a screenshot instead."));
+        }
+    }
+}
+
+// Confirm payment
 function confirmPayment() {
     if (!currentOrderId) {
         frappe.msgprint(__("Order data not loaded. Please refresh."));
@@ -178,10 +256,13 @@ function confirmPayment() {
                 btn.style.display = "none";
                 var deepLink = document.getElementById("btn-upi-deep-link");
                 if (deepLink) deepLink.style.display = "none";
+                var copyBtn = document.getElementById("btn-copy-upi");
+                if (copyBtn) copyBtn.style.display = "none";
+                var saveBtn = document.getElementById("btn-save-qr");
+                if (saveBtn) saveBtn.style.display = "none";
 
                 document.getElementById("upi-success").style.display = "block";
 
-                // Auto-redirect to order page after 2 seconds
                 setTimeout(function () {
                     window.location.href = "/orders/" + encodeURIComponent(currentOrderId);
                 }, 2000);
