@@ -152,11 +152,14 @@
                     document.getElementById("upi-order-amount").textContent = data.formatted_amount;
                     document.getElementById("upi-order-details").style.display = "block";
 
-                    // Set UPI deep link — payee only
+                    // Set UPI deep link with amount and order reference
                     var deepLinkBtn = document.getElementById("btn-upi-deep-link");
                     if (deepLinkBtn && data.upi_id) {
                         var upiUrl = "upi://pay?pa=" + encodeURIComponent(data.upi_id)
-                            + "&pn=" + encodeURIComponent(data.payee_name);
+                            + "&pn=" + encodeURIComponent(data.payee_name)
+                            + "&am=" + data.grand_total
+                            + "&cu=" + data.currency
+                            + "&tn=" + encodeURIComponent("Order " + data.order_name);
                         deepLinkBtn.href = upiUrl;
                     }
                 }
